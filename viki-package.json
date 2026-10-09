@@ -1,0 +1,31 @@
+{
+  "title": "Lumi - Svet plný zábavy",
+  "type": "HTML5 black-box DEO",
+  "language": "sk",
+  "entry": "index.html",
+  "targetPortal": "VIKI / CUDEO",
+  "compatibility": {
+    "responsiveMin": "320x560",
+    "responsiveMax": "1920x1080",
+    "offline": true,
+    "externalDependencies": false,
+    "usesCdn": false
+  },
+  "content": {
+    "world": "Svet plný zábavy - Prípravné obdobie",
+    "steps": 20,
+    "freeSteps": "1-8",
+    "miniGames": ["Lumikové prekvapenia", "Pexeso v kroku 4"],
+    "methodics": [
+      "krátke pravidelné vstupy",
+      "prvá hláska na začiatku slova",
+      "nápovedné obrázky",
+      "čítanie bez písmen",
+      "priebežný checkpoint"
+    ]
+  },
+  "notes": [
+    "Audio v tejto HTML verzii využíva Web Speech API ako vývojovú náhradu za finálne MP3 voiceovery.",
+    "Limit 3 zariadenia je pripravený v rodičovskej zóne ako integračný bod; reálne vynútenie potrebuje backend a Google účet."
+  ]
+}
