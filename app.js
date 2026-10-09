@@ -1379,12 +1379,12 @@
         <div class="lesson-body">
           <section class="task-card lesson-workspace">
             <header class="lesson-workspace-head">
-              <button class="soft-button listen-style-button" id="backToMapButton" type="button">Cvičenia</button>
               <div class="task-title">
                 <p class="eyebrow">Level ${level.number} · Cvičenie ${lessonIndex + 1} / ${levelLessons.length}</p>
                 <h1>${escapeHtml(lesson.title)}</h1>
                 <p>${escapeHtml(lesson.skill)}</p>
               </div>
+              <button class="soft-button listen-style-button" id="backToMapButton" type="button">Cvičenia</button>
             </header>
             <div class="lesson-task-content" id="taskMount"></div>
           </section>
