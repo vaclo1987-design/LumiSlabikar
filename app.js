@@ -9,6 +9,7 @@
   const AUDIO_DB_NAME = "lumi-alphabet-audio-v1";
   const AUDIO_STORE_NAME = "recordings";
   const MAX_RECORDING_MS = 4500;
+  const MAX_GUIDE_RECORDING_MS = 12000;
   const PRONUNCIATION_PASS_SCORE = 60;
 
   const poses = {
@@ -446,6 +447,74 @@
   const mistakes = ["Nie. Skús ešte raz.", "To nesedí.", "Pozri sa na nápovedu.", "Skús to pomaly."];
   const funny = ["To by bol zvláštny objav.", "To sa často nevidí.", "Zaujímavá voľba."];
 
+  const guideAudioGroups = [
+    {
+      id: "guidance",
+      label: "Sprievodné texty",
+      items: uniqueGuideItems([
+        ...lessons.map((lesson) => ({
+          id: `lesson-${lesson.order}-intro`,
+          label: `Cvičenie ${lesson.order}: ${lesson.title}`,
+          text: lesson.intro,
+        })),
+        { id: "guide-wrong-object", label: "Nesprávny obrázok", text: "To nesedí. Skús inú vec." },
+        { id: "guide-try-again", label: "Skús znova", text: "Skús ešte raz." },
+        { id: "guide-say-silently", label: "Povedz si slovo v hlave", text: "Povedz si slovo potichu." },
+        { id: "guide-pick-letter-first", label: "Najprv písmeno", text: "Najprv vyber správne písmeno." },
+        { id: "guide-not-yet", label: "Ešte nie", text: "Ešte nie. Skús znova." },
+        { id: "guide-surprise", label: "Lumikové prekvapenia", text: "Vyber okienko s prekvapením." },
+        { id: "guide-what-see", label: "Čo vidíš", text: "Čo vidíš?" },
+        { id: "guide-where-belongs", label: "Kam to patrí", text: "Patrí to domov, von alebo do školy?" },
+        { id: "guide-first-letter", label: "Začiatočné písmeno", text: "Vyber písmeno na začiatku." },
+        { id: "guide-different-letter", label: "Hľadáme iné písmeno", text: "Pozri ešte raz. Hľadáme iné písmeno." },
+        { id: "guide-listening", label: "Počúvam", text: "Počúvam ťa." },
+        { id: "guide-pronounce-again", label: "Zopakuj výslovnosť", text: "Skús písmeno vysloviť ešte raz." },
+      ]),
+    },
+    {
+      id: "rewards",
+      label: "Odmeny",
+      items: uniqueGuideItems([
+        ...praise.map((text, index) => ({ id: `reward-praise-${index + 1}`, label: `Pochvala ${index + 1}`, text })),
+        ...mistakes.map((text, index) => ({ id: `reward-correction-${index + 1}`, label: `Povzbudenie ${index + 1}`, text })),
+        ...funny.map((text, index) => ({ id: `reward-funny-${index + 1}`, label: `Veselá reakcia ${index + 1}`, text })),
+        ...[1, 2, 3, 4, 5].map((count) => ({
+          id: `reward-lights-${count}`,
+          label: `Odmena za ${count} ${lightWord(count)}`,
+          text: `Výborne. Získal si ${count} ${lightWord(count)}.`,
+        })),
+        { id: "reward-repeat", label: "Zopakované cvičenie", text: "Výborne. Úlohu si zvládol znova." },
+        { id: "reward-world-complete", label: "Dokončený svet", text: "Výborne. Svet plný zábavy je hotový." },
+        { id: "reward-pronunciation", label: "Správna výslovnosť", text: "Výborne. Výslovnosť sa podarila." },
+        { id: "reward-build-ma", label: "Postavená slabika MA", text: "Áno. MA." },
+        ...lessons
+          .filter((lesson) => lesson.type === "PhonemeStart")
+          .flatMap((lesson) => praise.map((prefix, index) => ({
+            id: `reward-first-sound-${lesson.order}-${index + 1}`,
+            label: `${lesson.title}: pochvala ${index + 1}`,
+            text: `${prefix} ${objectBank[lesson.object].label} sa začína na ${lesson.correct}.`,
+          }))),
+        ...lessons
+          .filter((lesson) => lesson.type === "BlendTwoSounds" || lesson.type === "BubbleSyllables")
+          .flatMap((lesson) => praise.map((prefix, index) => ({
+            id: `reward-syllable-${lesson.order}-${index + 1}`,
+            label: `${lesson.title}: pochvala ${index + 1}`,
+            text: `${prefix} Vzniklo ${lesson.correct}.`,
+          }))),
+      ]),
+    },
+    {
+      id: "levels",
+      label: "Popisy levelov",
+      items: levels.map((level) => ({
+        id: `level-${level.id}`,
+        label: `Level ${level.number}: ${level.title}`,
+        text: levelDescriptionText(level),
+      })),
+    },
+  ];
+  const guideAudioItems = guideAudioGroups.flatMap((group) => group.items);
+
   let state = loadState();
   let screen = "home";
   let activeLevelId = levels[0].id;
@@ -467,6 +536,9 @@
   let pronunciationListening = false;
   let selectedPatternAvailable = false;
   let parentAudioLetter = alphabet[0];
+  let parentGuideGroupId = guideAudioGroups[0].id;
+  let parentGuideItemId = guideAudioGroups[0].items[0].id;
+  let parentGuideRecordedIds = new Set();
   let audioDatabasePromise = null;
   let microphoneStream = null;
   let microphoneStreamPromise = null;
@@ -650,6 +722,23 @@
     return result;
   }
 
+  function uniqueGuideItems(items) {
+    const texts = new Set();
+    return items.filter((item) => {
+      if (!item?.text || texts.has(item.text)) return false;
+      texts.add(item.text);
+      return true;
+    });
+  }
+
+  function levelDescriptionText(level) {
+    return `Level ${level.number}. ${level.title}. ${level.subtitle}.`;
+  }
+
+  function guideAudioItemForText(text) {
+    return guideAudioItems.find((item) => item.text === text) || null;
+  }
+
   function setLumi(text, pose = "skolak", speakNow = false) {
     lastLine = text;
     lastSpeechSequence = null;
@@ -688,16 +777,13 @@
     lumiPose.classList.add("lumi-idle");
   }
 
-  function speak(text) {
-    lastLine = text;
-    lastSpeechSequence = null;
-    lastRecordedAudio = null;
+  function speakWithSystemVoice(text, requestId) {
+    if (requestId !== speechSequenceId) return;
     if (!("speechSynthesis" in window)) {
       showToast(text);
+      settleLumiAnimation();
       return;
     }
-    cancelSpeechPlayback();
-    animateLumi(currentLumiPose, true);
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "sk-SK";
     utterance.volume = Number(state.volume ?? 0.8);
@@ -705,6 +791,31 @@
     utterance.onend = settleLumiAnimation;
     utterance.onerror = settleLumiAnimation;
     window.speechSynthesis.speak(utterance);
+  }
+
+  function speak(text) {
+    lastLine = text;
+    lastSpeechSequence = null;
+    lastRecordedAudio = null;
+    cancelSpeechPlayback();
+    animateLumi(currentLumiPose, true);
+    const requestId = speechSequenceId;
+    const guideItem = guideAudioItemForText(text);
+    if (!guideItem) {
+      speakWithSystemVoice(text, requestId);
+      return;
+    }
+    getAudioRecord("guide", guideItem.id)
+      .then((record) => {
+        if (requestId !== speechSequenceId) return;
+        if (record?.blob && isCurrentGuideRecording(record, guideItem)) {
+          lastRecordedAudio = { kind: "guide", id: guideItem.id };
+          playAudioBlob(record.blob);
+          return;
+        }
+        speakWithSystemVoice(text, requestId);
+      })
+      .catch(() => speakWithSystemVoice(text, requestId));
   }
 
   function cancelSpeechPlayback() {
@@ -790,6 +901,10 @@
     return Boolean(item) && String(record.word || "") === String(item.word || "");
   }
 
+  function isCurrentGuideRecording(record, item) {
+    return record?.kind === "guide" && record.id === audioRecordId("guide", item.id) && record.text === item.text;
+  }
+
   async function getAudioRecord(kind, letter) {
     const database = await openAudioDatabase();
     return new Promise((resolve, reject) => {
@@ -827,6 +942,34 @@
       });
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error || new Error("Nahrávku sa nepodarilo uložiť."));
+    });
+  }
+
+  async function saveGuideAudioRecord(item, blob) {
+    const database = await openAudioDatabase();
+    return new Promise((resolve, reject) => {
+      const transaction = database.transaction(AUDIO_STORE_NAME, "readwrite");
+      transaction.objectStore(AUDIO_STORE_NAME).put({
+        id: audioRecordId("guide", item.id),
+        kind: "guide",
+        key: item.id,
+        text: item.text,
+        label: item.label,
+        blob,
+        updatedAt: Date.now(),
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Nahrávku sa nepodarilo uložiť."));
+    });
+  }
+
+  async function deleteAudioRecord(kind, key) {
+    const database = await openAudioDatabase();
+    return new Promise((resolve, reject) => {
+      const transaction = database.transaction(AUDIO_STORE_NAME, "readwrite");
+      transaction.objectStore(AUDIO_STORE_NAME).delete(audioRecordId(kind, key));
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Nahrávku sa nepodarilo odstrániť."));
     });
   }
 
@@ -884,6 +1027,18 @@
     }
   }
 
+  async function playStoredGuideRecording(item, remember = false) {
+    try {
+      const record = await getAudioRecord("guide", item.id);
+      if (!record?.blob || !isCurrentGuideRecording(record, item)) return false;
+      if (remember) lastRecordedAudio = { kind: "guide", id: item.id };
+      await playAudioBlob(record.blob);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function ensureMicrophoneStream() {
     const activeStream = microphoneStream?.getAudioTracks().some((track) => track.readyState === "live");
     if (activeStream) {
@@ -931,7 +1086,7 @@
       .find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || "";
   }
 
-  async function startAudioRecording({ item, kind, purpose, onStateChange, onComplete, onError }) {
+  async function startAudioRecording({ item, kind, purpose, maxDurationMs = MAX_RECORDING_MS, onStateChange, onComplete, onError }) {
     if (activeRecording || recordingStartPending) return;
     recordingStartPending = true;
     try {
@@ -978,7 +1133,7 @@
         }
       };
       recorder.start();
-      session.timer = window.setTimeout(() => stopAudioRecording(), MAX_RECORDING_MS);
+      session.timer = window.setTimeout(() => stopAudioRecording(), maxDurationMs);
       session.onStateChange?.(true);
     } catch (error) {
       onStateChange?.(false);
@@ -1253,13 +1408,13 @@
       button.addEventListener("click", () => {
         activeLevelId = button.dataset.level;
         const level = getLevel();
-        setLumi(`Vybral si ${level.title}.`, "skolak", true);
+        setLumi(levelDescriptionText(level), "skolak", true);
         setScreen("map");
       });
     });
     document.getElementById("continueButton").addEventListener("click", () => {
       activeLevelId = continueLevel.id;
-      setLumi(`Pokračujeme v leveli ${continueLevel.title}.`, "skolak", true);
+      setLumi(levelDescriptionText(continueLevel), "skolak", true);
       setScreen("map");
     });
     document.getElementById("surpriseButton").addEventListener("click", () => setScreen("surprise"));
@@ -2408,6 +2563,11 @@
   function setParentAudioRecordingState(kind, recording) {
     const alphabetButton = document.getElementById("recordParentAlphabetButton");
     const patternButton = document.getElementById("recordParentPatternButton");
+    const guideButton = document.getElementById("recordParentGuideButton");
+    const guidePlayButton = document.getElementById("playParentGuideButton");
+    const guideDeleteButton = document.getElementById("deleteParentGuideButton");
+    const guideGroupSelect = document.getElementById("parentGuideGroupSelect");
+    const guideItemSelect = document.getElementById("parentGuideItemSelect");
     const letterButtons = document.querySelectorAll("[data-parent-audio-letter]");
     if (!alphabetButton || !patternButton) return;
     alphabetButton.disabled = recording && kind !== "alphabet";
@@ -2416,6 +2576,11 @@
     patternButton.textContent = recording && kind === "pattern" ? "ZASTAVIŤ" : "NAHRAŤ";
     alphabetButton.classList.toggle("recording", recording && kind === "alphabet");
     patternButton.classList.toggle("recording", recording && kind === "pattern");
+    if (guideButton) guideButton.disabled = recording;
+    if (guidePlayButton) guidePlayButton.disabled = recording || !parentGuideRecordedIds.has(parentGuideItemId);
+    if (guideDeleteButton) guideDeleteButton.disabled = recording || !parentGuideRecordedIds.has(parentGuideItemId);
+    if (guideGroupSelect) guideGroupSelect.disabled = recording;
+    if (guideItemSelect) guideItemSelect.disabled = recording;
     letterButtons.forEach((button) => {
       button.disabled = recording;
     });
@@ -2484,6 +2649,154 @@
       await refreshParentAudioStudio(`Nahrávky pre ${parentAudioLetter.letter} boli odstránené.`);
     });
     refreshParentAudioStudio();
+  }
+
+  function currentParentGuideGroup() {
+    return guideAudioGroups.find((group) => group.id === parentGuideGroupId) || guideAudioGroups[0];
+  }
+
+  function currentParentGuideItem() {
+    const group = currentParentGuideGroup();
+    return group.items.find((item) => item.id === parentGuideItemId) || group.items[0];
+  }
+
+  function updateParentGuideSelection() {
+    const group = currentParentGuideGroup();
+    if (!group.items.some((item) => item.id === parentGuideItemId)) parentGuideItemId = group.items[0].id;
+    const item = currentParentGuideItem();
+    const groupSelect = document.getElementById("parentGuideGroupSelect");
+    const itemSelect = document.getElementById("parentGuideItemSelect");
+    const selectedLabel = document.getElementById("parentGuideSelectedLabel");
+    const selectedText = document.getElementById("parentGuideSelectedText");
+    if (!groupSelect || !itemSelect || !selectedLabel || !selectedText) return;
+    groupSelect.value = group.id;
+    itemSelect.innerHTML = group.items
+      .map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.label)}${parentGuideRecordedIds.has(entry.id) ? " (nahraté)" : ""}</option>`)
+      .join("");
+    itemSelect.value = item.id;
+    selectedLabel.textContent = item.label;
+    selectedText.textContent = item.text;
+  }
+
+  async function refreshParentGuideStudio(message = "") {
+    const summary = document.getElementById("parentGuideSummary");
+    const status = document.getElementById("parentGuideStatus");
+    if (!summary || !status) return;
+    try {
+      const recordings = await getAllAudioRecords();
+      parentGuideRecordedIds = new Set(
+        recordings
+          .filter((record) => record.kind === "guide")
+          .filter((record) => {
+            const item = guideAudioItems.find((entry) => entry.id === record.key);
+            return item && isCurrentGuideRecording(record, item);
+          })
+          .map((record) => record.key),
+      );
+      summary.innerHTML = guideAudioGroups
+        .map((group) => {
+          const completed = group.items.filter((item) => parentGuideRecordedIds.has(item.id)).length;
+          return `<span><b>${completed}/${group.items.length}</b> ${escapeHtml(group.label.toLowerCase())}</span>`;
+        })
+        .join("");
+      updateParentGuideSelection();
+      const item = currentParentGuideItem();
+      const hasRecording = parentGuideRecordedIds.has(item.id);
+      document.getElementById("playParentGuideButton").disabled = !hasRecording;
+      document.getElementById("deleteParentGuideButton").disabled = !hasRecording;
+      status.textContent = message || `Vybraná nahrávka: ${item.label}.`;
+    } catch (error) {
+      status.textContent = error?.message || "Úložisko nahrávok nie je dostupné.";
+    }
+  }
+
+  function setParentGuideRecordingState(recording) {
+    const recordButton = document.getElementById("recordParentGuideButton");
+    const playButton = document.getElementById("playParentGuideButton");
+    const deleteButton = document.getElementById("deleteParentGuideButton");
+    const groupSelect = document.getElementById("parentGuideGroupSelect");
+    const itemSelect = document.getElementById("parentGuideItemSelect");
+    const alphabetButton = document.getElementById("recordParentAlphabetButton");
+    const patternButton = document.getElementById("recordParentPatternButton");
+    const alphabetPlayButton = document.getElementById("playParentAlphabetButton");
+    const patternPlayButton = document.getElementById("playParentPatternButton");
+    const alphabetDeleteButton = document.getElementById("deleteParentLetterAudioButton");
+    if (!recordButton || !playButton || !deleteButton || !groupSelect || !itemSelect) return;
+    recordButton.textContent = recording ? "ZASTAVIŤ" : "NAHRAŤ";
+    recordButton.classList.toggle("recording", recording);
+    playButton.disabled = recording || !parentGuideRecordedIds.has(parentGuideItemId);
+    deleteButton.disabled = recording || !parentGuideRecordedIds.has(parentGuideItemId);
+    groupSelect.disabled = recording;
+    itemSelect.disabled = recording;
+    if (alphabetButton) alphabetButton.disabled = recording;
+    if (patternButton) patternButton.disabled = recording;
+    if (alphabetPlayButton && recording) alphabetPlayButton.disabled = true;
+    if (patternPlayButton && recording) patternPlayButton.disabled = true;
+    if (alphabetDeleteButton && recording) alphabetDeleteButton.disabled = true;
+    document.querySelectorAll("[data-parent-audio-letter]").forEach((button) => {
+      button.disabled = recording;
+    });
+  }
+
+  async function toggleParentGuideRecording() {
+    if (activeRecording) {
+      if (activeRecording.purpose === "parent" && activeRecording.kind === "guide") stopAudioRecording();
+      return;
+    }
+    const item = currentParentGuideItem();
+    const status = document.getElementById("parentGuideStatus");
+    cancelSpeechPlayback();
+    await startAudioRecording({
+      item,
+      kind: "guide",
+      purpose: "parent",
+      maxDurationMs: MAX_GUIDE_RECORDING_MS,
+      onStateChange: (recording) => {
+        setParentGuideRecordingState(recording);
+        if (status) status.textContent = recording ? `Nahrávam „${item.text}“...` : "Spracúvam nahrávku...";
+      },
+      onComplete: async (blob) => {
+        await saveGuideAudioRecord(item, blob);
+        sfx("ok");
+        await refreshParentGuideStudio(`Nahrávka „${item.label}“ je uložená.`);
+        await refreshParentAudioStudio();
+      },
+      onError: async (error) => {
+        setParentGuideRecordingState(false);
+        await refreshParentAudioStudio();
+        if (status) status.textContent = error?.message || "Nahrávanie sa nepodarilo.";
+      },
+    });
+  }
+
+  async function playParentGuideAudio() {
+    const item = currentParentGuideItem();
+    const status = document.getElementById("parentGuideStatus");
+    const played = await playStoredGuideRecording(item, false);
+    if (status) status.textContent = played ? "Prehrávam uloženú nahrávku." : "Táto nahrávka ešte chýba.";
+  }
+
+  function bindParentGuideStudio() {
+    document.getElementById("parentGuideGroupSelect").addEventListener("change", (event) => {
+      if (activeRecording) return;
+      parentGuideGroupId = event.target.value;
+      parentGuideItemId = currentParentGuideGroup().items[0].id;
+      refreshParentGuideStudio();
+    });
+    document.getElementById("parentGuideItemSelect").addEventListener("change", (event) => {
+      if (activeRecording) return;
+      parentGuideItemId = event.target.value;
+      refreshParentGuideStudio();
+    });
+    document.getElementById("recordParentGuideButton").addEventListener("click", toggleParentGuideRecording);
+    document.getElementById("playParentGuideButton").addEventListener("click", playParentGuideAudio);
+    document.getElementById("deleteParentGuideButton").addEventListener("click", async () => {
+      const item = currentParentGuideItem();
+      if (!window.confirm(`Odstrániť nahrávku „${item.label}“?`)) return;
+      await deleteAudioRecord("guide", item.id);
+      await refreshParentGuideStudio(`Nahrávka „${item.label}“ bola odstránená.`);
+    });
+    refreshParentGuideStudio();
   }
 
   function showParentModal(lesson = null) {
@@ -2567,6 +2880,47 @@
             </div>
           </div>
         </section>
+        <section class="parent-audio-studio parent-guide-studio" aria-labelledby="parentGuideTitle">
+          <div class="parent-audio-head">
+            <div>
+              <p class="eyebrow">Sprievodný hlas</p>
+              <h3 id="parentGuideTitle">Texty, odmeny a levely</h3>
+            </div>
+            <div class="parent-audio-summary" id="parentGuideSummary" aria-live="polite"></div>
+          </div>
+          <div class="parent-guide-layout">
+            <div class="parent-guide-picker">
+              <label for="parentGuideGroupSelect">
+                <span>Skupina</span>
+                <select id="parentGuideGroupSelect">
+                  ${guideAudioGroups
+                    .map((group) => `<option value="${escapeHtml(group.id)}" ${group.id === parentGuideGroupId ? "selected" : ""}>${escapeHtml(group.label)}</option>`)
+                    .join("")}
+                </select>
+              </label>
+              <label for="parentGuideItemSelect">
+                <span>Nahrávka</span>
+                <select id="parentGuideItemSelect">
+                  ${currentParentGuideGroup().items
+                    .map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === parentGuideItemId ? "selected" : ""}>${escapeHtml(item.label)}</option>`)
+                    .join("")}
+                </select>
+              </label>
+            </div>
+            <div class="parent-audio-controls parent-guide-controls">
+              <div class="parent-guide-script">
+                <strong id="parentGuideSelectedLabel">${escapeHtml(currentParentGuideItem().label)}</strong>
+                <p id="parentGuideSelectedText">${escapeHtml(currentParentGuideItem().text)}</p>
+              </div>
+              <div class="parent-recording-actions">
+                <button class="soft-button" id="playParentGuideButton" type="button" disabled>PREHRAŤ</button>
+                <button class="primary-button" id="recordParentGuideButton" type="button">NAHRAŤ</button>
+              </div>
+              <p class="parent-audio-status" id="parentGuideStatus" role="status" aria-live="polite">Vyber nahrávku.</p>
+              <button class="soft-button delete-audio-button" id="deleteParentGuideButton" type="button" disabled>ODSTRÁNIŤ NAHRÁVKU</button>
+            </div>
+          </div>
+        </section>
         ${resetButton}
       </div>
     `;
@@ -2574,6 +2928,7 @@
     parentModal.setAttribute("aria-hidden", "false");
     bindHoldUnlock();
     bindParentAudioStudio();
+    bindParentGuideStudio();
     const resetProgressButton = document.getElementById("resetProgressButton");
     if (resetProgressButton) {
       resetProgressButton.addEventListener("click", () => {
@@ -2675,6 +3030,13 @@
   });
   repeatButton.addEventListener("click", () => {
     if (lastRecordedAudio) {
+      if (lastRecordedAudio.kind === "guide") {
+        const guideItem = guideAudioItems.find((item) => item.id === lastRecordedAudio.id);
+        if (guideItem) {
+          playStoredGuideRecording(guideItem, true);
+          return;
+        }
+      }
       const item = alphabet.find((entry) => entry.letter === lastRecordedAudio.letter);
       if (item) {
         playStoredRecording(lastRecordedAudio.kind, item, true);

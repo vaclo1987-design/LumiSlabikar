@@ -405,6 +405,10 @@ button {
   min-height: 0;
 }
 
+#app:focus {
+  outline: none;
+}
+
 .screen {
   min-height: 100%;
   display: grid;
@@ -2198,6 +2202,65 @@ button {
   align-items: start;
 }
 
+.parent-guide-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(330px, 1.25fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.parent-guide-picker {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.parent-guide-picker label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.parent-guide-picker select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+}
+
+.parent-guide-picker select:focus-visible {
+  border-color: rgba(19, 124, 244, 0.72);
+  outline: 3px solid rgba(19, 124, 244, 0.16);
+}
+
+.parent-guide-script {
+  padding: 14px;
+  border: 1px solid rgba(19, 124, 244, 0.18);
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, #f1f9ff, #fffbed);
+}
+
+.parent-guide-script strong {
+  display: block;
+  font-size: 17px;
+}
+
+.parent-guide-script p {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .parent-audio-letter-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(46px, 1fr));
@@ -2769,7 +2832,8 @@ button {
     justify-content: flex-start;
   }
 
-  .parent-audio-layout {
+  .parent-audio-layout,
+  .parent-guide-layout {
     grid-template-columns: 1fr;
   }
 
